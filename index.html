@@ -179,6 +179,14 @@ tr:hover td{background:var(--off)}
 .tag-green{background:var(--mint-bg);color:var(--mint-d);border:1px solid #A7F3D0}
 .del-btn{background:var(--rose-bg);border:1.5px solid var(--rose);color:var(--rose-d);border-radius:6px;width:24px;height:24px;cursor:pointer;font-size:14px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
 .del-btn:hover{background:var(--rose-d);color:#fff;border-color:var(--rose-d)}
+.edit-btn{background:var(--sky-bg);border:1.5px solid var(--sky);color:var(--sky-d);border-radius:6px;width:24px;height:24px;cursor:pointer;font-size:12px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.edit-btn:hover{background:var(--sky-d);color:#fff;border-color:var(--sky-d)}
+.btn-row{display:flex;gap:4px;align-items:center}
+.goal-update-row{display:flex;gap:6px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)}
+.goal-update-inp{padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;font-family:'Nunito',sans-serif;width:130px;outline:none}
+.goal-update-inp:focus{border-color:var(--lav-d)}
+.goal-update-btn{padding:6px 12px;border-radius:8px;border:none;font-size:11px;font-weight:900;cursor:pointer;font-family:'Nunito',sans-serif;background:#4C1D95;color:#fff}
+.goal-update-btn:hover{opacity:.85}
 
 /* ============================================================
    BARS
@@ -1063,8 +1071,137 @@ function addGoal() {
 }
 
 function del(arr, id) {
+  if(!confirm('Yakin mau hapus data ini?')) return;
   D[arr] = D[arr].filter(x=>x.id!==id);
-  renderAll(); saveLocal(); toast('🗑️ Data dihapus','warn');
+  renderAll(); saveLocal();
+  // Sync delete to Google Sheets
+  deleteRemote(arr, id);
+  toast('🗑️ Data dihapus','warn');
+}
+
+async function deleteRemote(sheet, id) {
+  if(!CFG.scriptUrl) return;
+  try {
+    await fetch(CFG.scriptUrl, {
+      method:'POST',
+      body: JSON.stringify({action:'deleteRow', sheet, id})
+    });
+  } catch(e){ console.warn('Remote delete failed', e); }
+}
+
+/* ============================================================
+   EDIT FUNCTIONS
+   ============================================================ */
+function openEditModal(arr, id) {
+  const item = D[arr].find(x=>x.id===id);
+  if(!item) return;
+  let fields = '';
+  const katOptsIncome = ['Gaji','Freelance','Investasi','Bisnis','Bonus','Sewa','Lainnya'];
+  const katOptsExpense = ['Makanan','Transport','Belanja','Tagihan','Hiburan','Anak','Kesehatan','Pendidikan','Lainnya'];
+
+  if(arr==='income') {
+    fields = `
+      <div class="inp-group"><label class="inp-lbl">Tanggal</label><input class="inp" type="date" id="edit-date" value="${item.date||''}"></div>
+      <div class="inp-group"><label class="inp-lbl">Sumber</label><input class="inp" type="text" id="edit-sumber" value="${item.sumber||''}"></div>
+      <div class="inp-group"><label class="inp-lbl">Kategori</label><select class="inp" id="edit-kat">${katOptsIncome.map(k=>`<option${k===item.kat?' selected':''}>${k}</option>`).join('')}</select></div>
+      <div class="inp-group"><label class="inp-lbl">Nominal (Rp)</label><input class="inp" type="number" id="edit-nominal" value="${item.nominal}"></div>`;
+  } else if(arr==='expense') {
+    fields = `
+      <div class="inp-group"><label class="inp-lbl">Tanggal</label><input class="inp" type="date" id="edit-date" value="${item.date||''}"></div>
+      <div class="inp-group"><label class="inp-lbl">Kategori</label><select class="inp" id="edit-kat">${katOptsExpense.map(k=>`<option${k===item.kat?' selected':''}>${k}</option>`).join('')}</select></div>
+      <div class="inp-group"><label class="inp-lbl">Keterangan</label><input class="inp" type="text" id="edit-desc" value="${item.desc||''}"></div>
+      <div class="inp-group"><label class="inp-lbl">Nominal (Rp)</label><input class="inp" type="number" id="edit-nominal" value="${item.nominal}"></div>`;
+  } else if(arr==='assets') {
+    fields = `
+      <div class="inp-group"><label class="inp-lbl">Nama Aset</label><input class="inp" type="text" id="edit-nama" value="${item.nama||''}"></div>
+      <div class="inp-group"><label class="inp-lbl">Platform/Bank</label><input class="inp" type="text" id="edit-platform" value="${item.platform||''}"></div>
+      <div class="inp-group"><label class="inp-lbl">Nilai Awal (Rp)</label><input class="inp" type="number" id="edit-modal" value="${item.modal}"></div>
+      <div class="inp-group"><label class="inp-lbl">Nilai Sekarang (Rp)</label><input class="inp" type="number" id="edit-now" value="${item.now}"></div>`;
+  } else if(arr==='invest') {
+    fields = `
+      <div class="inp-group"><label class="inp-lbl">Nama</label><input class="inp" type="text" id="edit-nama" value="${item.nama||''}"></div>
+      <div class="inp-group"><label class="inp-lbl">Harga Beli (Rp)</label><input class="inp" type="number" id="edit-modal" value="${item.modal}"></div>
+      <div class="inp-group"><label class="inp-lbl">Harga Sekarang (Rp)</label><input class="inp" type="number" id="edit-now" value="${item.now}"></div>`;
+  } else if(arr==='goals') {
+    fields = `
+      <div class="inp-group"><label class="inp-lbl">Nama Goals</label><input class="inp" type="text" id="edit-nama" value="${item.nama||''}"></div>
+      <div class="inp-group"><label class="inp-lbl">Target (Rp)</label><input class="inp" type="number" id="edit-target" value="${item.target}"></div>
+      <div class="inp-group"><label class="inp-lbl">Terkumpul (Rp)</label><input class="inp" type="number" id="edit-now" value="${item.now}"></div>
+      <div class="inp-group"><label class="inp-lbl">Target Tanggal</label><input class="inp" type="date" id="edit-deadline" value="${item.deadline||''}"></div>`;
+  } else if(arr==='liabilities') {
+    fields = `
+      <div class="inp-group"><label class="inp-lbl">Nama Hutang</label><input class="inp" type="text" id="edit-nama" value="${item.nama||''}"></div>
+      <div class="inp-group"><label class="inp-lbl">Total Hutang (Rp)</label><input class="inp" type="number" id="edit-total" value="${item.total}"></div>
+      <div class="inp-group"><label class="inp-lbl">Cicilan/Bulan (Rp)</label><input class="inp" type="number" id="edit-cicilan" value="${item.cicilan}"></div>
+      <div class="inp-group"><label class="inp-lbl">Sisa Cicilan (bln)</label><input class="inp" type="number" id="edit-sisa" value="${item.sisa}"></div>`;
+  }
+
+  document.getElementById('modal-title').textContent = '✏️ Edit Data';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${fields}
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn-add btn-sky" style="margin-top:0;flex:1" onclick="saveEdit('${arr}',${id})">💾 Simpan</button>
+        <button class="btn-add btn-ghost" style="margin-top:0" onclick="closeModalForce()">Batal</button>
+      </div>
+    </div>`;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function saveEdit(arr, id) {
+  const idx = D[arr].findIndex(x=>x.id===id);
+  if(idx<0) return;
+  const item = D[arr][idx];
+
+  if(arr==='income') {
+    item.date = document.getElementById('edit-date').value;
+    item.sumber = document.getElementById('edit-sumber').value;
+    item.kat = document.getElementById('edit-kat').value;
+    item.nominal = +document.getElementById('edit-nominal').value;
+  } else if(arr==='expense') {
+    item.date = document.getElementById('edit-date').value;
+    item.kat = document.getElementById('edit-kat').value;
+    item.desc = document.getElementById('edit-desc').value;
+    item.nominal = +document.getElementById('edit-nominal').value;
+  } else if(arr==='assets') {
+    item.nama = document.getElementById('edit-nama').value;
+    item.platform = document.getElementById('edit-platform').value;
+    item.modal = +document.getElementById('edit-modal').value;
+    item.now = +document.getElementById('edit-now').value;
+  } else if(arr==='invest') {
+    item.nama = document.getElementById('edit-nama').value;
+    item.modal = +document.getElementById('edit-modal').value;
+    item.now = +document.getElementById('edit-now').value;
+  } else if(arr==='goals') {
+    item.nama = document.getElementById('edit-nama').value;
+    item.target = +document.getElementById('edit-target').value;
+    item.now = +document.getElementById('edit-now').value;
+    item.deadline = document.getElementById('edit-deadline').value;
+  } else if(arr==='liabilities') {
+    item.nama = document.getElementById('edit-nama').value;
+    item.total = +document.getElementById('edit-total').value;
+    item.cicilan = +document.getElementById('edit-cicilan').value;
+    item.sisa = +document.getElementById('edit-sisa').value;
+  }
+
+  D[arr][idx] = item;
+  saveLocal();
+  syncItem(arr, item);
+  renderAll();
+  closeModalForce();
+  toast('✅ Data berhasil diupdate!');
+}
+
+function quickUpdateGoal(id) {
+  const val = +document.getElementById('quick-now-'+id).value;
+  if(isNaN(val) || val < 0) return toast('Masukkan angka yang valid!','warn');
+  const idx = D.goals.findIndex(x=>x.id===id);
+  if(idx<0) return;
+  D.goals[idx].now = val;
+  saveLocal();
+  syncItem('goals', D.goals[idx]);
+  renderAll();
+  toast('✅ Terkumpul diupdate!');
 }
 
 /* ============================================================
@@ -1382,7 +1519,7 @@ function renderIncomeTable() {
       <td><span class="tag" style="background:${bg};color:${fg}">${x.kat}</span></td>
       <td><span class="tag tag-sky">${x.user||'–'}</span></td>
       <td style="color:var(--mint-d);font-weight:900">${rp(x.nominal)}</td>
-      <td><button class="del-btn" onclick="del('income',${x.id})">×</button></td></tr>`;
+      <td><div class="btn-row"><button class="edit-btn" onclick="openEditModal('income',${x.id})" title="Edit">✏️</button><button class="del-btn" onclick="del('income',${x.id})">×</button></div></td></tr>`;
   }).join('');
   document.getElementById('income-tbody').innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Belum ada pemasukan</td></tr>';
   document.getElementById('inc-total').textContent = rp(data.reduce((s,x)=>s+x.nominal,0));
@@ -1401,7 +1538,7 @@ function renderExpenseTable() {
       <td>${x.desc||''}</td>
       <td><span class="tag tag-rose">${x.user||'–'}</span></td>
       <td style="color:var(--rose-d);font-weight:900">${rp(x.nominal)}</td>
-      <td><button class="del-btn" onclick="del('expense',${x.id})">×</button></td></tr>`;
+      <td><div class="btn-row"><button class="edit-btn" onclick="openEditModal('expense',${x.id})" title="Edit">✏️</button><button class="del-btn" onclick="del('expense',${x.id})">×</button></div></td></tr>`;
   }).join('');
   document.getElementById('expense-tbody').innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Belum ada pengeluaran</td></tr>';
   document.getElementById('exp-total').textContent = rp(data.reduce((s,x)=>s+x.nominal,0));
@@ -1458,7 +1595,7 @@ function renderAssets() {
       <td style="color:${gl>=0?'var(--mint-d)':'var(--rose-d)'};font-weight:900">
         ${gl>=0?'+':''}${rp(gl)} (${gl>=0?'+':''}${glp}%)
       </td>
-      <td><button class="del-btn" onclick="del('assets',${a.id})">×</button></td></tr>`;
+      <td><div class="btn-row"><button class="edit-btn" onclick="openEditModal('assets',${a.id})" title="Edit">✏️</button><button class="del-btn" onclick="del('assets',${a.id})">×</button></div></td></tr>`;
   }).join('');
   document.getElementById('assets-tbody').innerHTML = rows || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Belum ada aset</td></tr>';
 }
@@ -1486,6 +1623,7 @@ function renderInvestCards() {
         </div>
         <div style="display:flex;align-items:center;gap:6px">
           <span class="inv-type-badge tag" style="background:${bg};color:${fg}">${x.kat}</span>
+          <button class="edit-btn" onclick="openEditModal('invest',${x.id})" title="Edit">✏️</button>
           <button class="del-btn" onclick="del('invest',${x.id})">×</button>
         </div>
       </div>
@@ -1564,7 +1702,10 @@ function renderLiabilities() {
             <span class="tag tag-sky">${l.user||'–'}</span>
           </div>
         </div>
-        <button class="del-btn" onclick="del('liabilities',${l.id})">×</button>
+        <div style="display:flex;gap:6px">
+          <button class="edit-btn" onclick="openEditModal('liabilities',${l.id})" title="Edit">✏️</button>
+          <button class="del-btn" onclick="del('liabilities',${l.id})">×</button>
+        </div>
       </div>
       <div class="liab-row">
         <div class="liab-item-detail"><div class="liab-item-lbl">Total Hutang</div><div class="liab-item-val" style="color:var(--rose-d)">${rp(l.total)}</div></div>
@@ -1615,6 +1756,7 @@ function renderGoals() {
         </span>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:14px;font-weight:900;color:${text}">${pct}%</span>
+          <button class="edit-btn" onclick="openEditModal('goals',${g.id})" title="Edit">✏️</button>
           <button class="del-btn" onclick="del('goals',${g.id})">×</button>
         </div>
       </div>
@@ -1628,6 +1770,11 @@ function renderGoals() {
       </div>
       ${monthlyNeeded&&pct<100?`<div style="margin-top:6px;font-size:11px;font-weight:700;color:var(--muted)">💡 Perlu nabung <strong style="color:${text}">${rpShort(monthlyNeeded)}/bulan</strong> untuk capai target</div>`:''}
       ${pct>=100?`<div style="margin-top:6px;font-size:12px;font-weight:800;color:${text}">🎉 Tercapai! Selamat ya!</div>`:''}
+      <div class="goal-update-row">
+        <span style="font-size:11px;font-weight:800;color:var(--muted)">Update terkumpul:</span>
+        <input class="goal-update-inp" type="number" id="quick-now-${g.id}" placeholder="${g.now}" value="${g.now}">
+        <button class="goal-update-btn" onclick="quickUpdateGoal(${g.id})">💾 Update</button>
+      </div>
     </div>`;
   }).join('');
   document.getElementById('goals-list').innerHTML = html || '<div style="text-align:center;padding:32px;color:var(--muted);font-weight:700">Belum ada goals keuangan. Tambahkan impianmu! 🌟</div>';
